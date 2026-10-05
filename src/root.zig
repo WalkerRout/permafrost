@@ -32,7 +32,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
 
         const Self = @This();
 
-        const Error = error {
+        const Error = error{
             OutOfMemory,
             InvalidNode,
         };
@@ -78,7 +78,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
         }
 
         pub fn successors(self: *const Self, node_handle: NodeHandle) SuccessorsIterator(V, E) {
-            const first_outgoing_edge = 
+            const first_outgoing_edge =
                 if (self.getNode(node_handle)) |node| node.first_outgoing_edge else null;
             return .{
                 .graph = self,
