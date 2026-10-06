@@ -1,9 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const NodeHandle = struct {
-    offset: usize,
-};
+// nonexhaustive enum cannot be built using struct literal syntax
+pub const NodeHandle = enum(usize) { _ };
 
 pub fn NodeData(comptime T: type) type {
     return struct {
@@ -12,9 +11,8 @@ pub fn NodeData(comptime T: type) type {
     };
 }
 
-pub const EdgeHandle = struct {
-    offset: usize,
-};
+// sameshit
+pub const EdgeHandle = enum(usize) { _ };
 
 pub fn EdgeData(comptime T: type) type {
     return struct {
@@ -30,15 +28,13 @@ pub fn Graph(comptime V: type, comptime E: type) type {
         nodes: std.ArrayList(NodeData(V)),
         edges: std.ArrayList(EdgeData(E)),
 
-        const Self = @This();
-
         const Error = error{
             OutOfMemory,
             InvalidNode,
         };
 
         // todo accept gpa as argument?
-        pub fn init(gpa: Allocator) Self {
+        pub fn init(gpa: Allocator) Graph(V, E) {
             return .{
                 .gpa = gpa,
                 .nodes = .empty,
@@ -46,23 +42,21 @@ pub fn Graph(comptime V: type, comptime E: type) type {
             };
         }
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: *Graph(V, E)) void {
             self.nodes.deinit(self.gpa);
             self.edges.deinit(self.gpa);
         }
 
-        pub fn addNode(self: *Self, payload: V) Error!NodeHandle {
+        pub fn addNode(self: *Graph(V, E), payload: V) Error!NodeHandle {
             const index = self.nodes.items.len;
             try self.nodes.append(self.gpa, .{
                 .payload = payload,
                 .first_outgoing_edge = null,
             });
-            return .{
-                .offset = index,
-            };
+            return @enumFromInt(index);
         }
 
-        pub fn addEdge(self: *Self, source_node_handle: NodeHandle, target_node_handle: NodeHandle, payload: E) Error!EdgeHandle {
+        pub fn addEdge(self: *Graph(V, E), source_node_handle: NodeHandle, target_node_handle: NodeHandle, payload: E) Error!EdgeHandle {
             const index = self.edges.items.len;
             const source_node = self.getNode(source_node_handle) orelse return Error.InvalidNode;
             const target_node = self.getNode(target_node_handle) orelse return Error.InvalidNode;
@@ -72,12 +66,24 @@ pub fn Graph(comptime V: type, comptime E: type) type {
                 .target = target_node_handle,
                 .next_outgoing_edge = source_node.first_outgoing_edge,
             });
-            const handle = EdgeHandle{ .offset = index };
+            const handle: EdgeHandle = @enumFromInt(index);
             source_node.first_outgoing_edge = handle;
             return handle;
         }
 
-        pub fn successors(self: *const Self, node_handle: NodeHandle) SuccessorsIterator(V, E) {
+        pub const SuccessorsIterator = struct {
+            graph: *const Graph(V, E),
+            current_edge_handle: ?EdgeHandle,
+
+            pub fn next(self: *SuccessorsIterator) ?NodeHandle {
+                const edge_handle = self.current_edge_handle orelse return null;
+                const edge = self.graph.getEdge(edge_handle) orelse return null;
+                self.current_edge_handle = edge.next_outgoing_edge;
+                return edge.target;
+            }
+        };
+
+        pub fn successors(self: *const Graph(V, E), node_handle: NodeHandle) SuccessorsIterator {
             const first_outgoing_edge =
                 if (self.getNode(node_handle)) |node| node.first_outgoing_edge else null;
             return .{
@@ -86,37 +92,42 @@ pub fn Graph(comptime V: type, comptime E: type) type {
             };
         }
 
+        pub const NodeIterator = struct {
+            next_offset: usize,
+            len: usize,
+
+            pub fn next(self: *NodeIterator) ?NodeHandle {
+                if (self.next_offset >= self.len) return null;
+                const handle: NodeHandle = @enumFromInt(self.next_offset);
+                self.next_offset += 1;
+                return handle;
+            }
+        };
+
+        pub fn allNodes(self: *const Graph(V, E)) NodeIterator {
+            return .{
+                .next_offset = 0,
+                .len = self.nodes.items.len,
+            };
+        }
+
         // opaque accessors, since we might swap offset for a ptr later...
-        pub fn getNode(self: *const Self, node_handle: NodeHandle) ?*NodeData(V) {
-            if (node_handle.offset >= self.nodes.items.len) {
+        pub fn getNode(self: *const Graph(V, E), node_handle: NodeHandle) ?*NodeData(V) {
+            const offset = @intFromEnum(node_handle);
+            if (offset >= self.nodes.items.len) {
                 return null;
             } else {
-                return &self.nodes.items[node_handle.offset];
+                return &self.nodes.items[offset];
             }
         }
 
-        pub fn getEdge(self: *const Self, edge_handle: EdgeHandle) ?*EdgeData(E) {
-            if (edge_handle.offset >= self.edges.items.len) {
+        pub fn getEdge(self: *const Graph(V, E), edge_handle: EdgeHandle) ?*EdgeData(E) {
+            const offset = @intFromEnum(edge_handle);
+            if (offset >= self.edges.items.len) {
                 return null;
             } else {
-                return &self.edges.items[edge_handle.offset];
+                return &self.edges.items[offset];
             }
-        }
-    };
-}
-
-pub fn SuccessorsIterator(comptime V: type, comptime E: type) type {
-    return struct {
-        graph: *const Graph(V, E),
-        current_edge_handle: ?EdgeHandle,
-
-        const Self = @This();
-
-        pub fn next(self: *Self) ?NodeHandle {
-            const edge_handle = self.current_edge_handle orelse return null;
-            const edge = self.graph.getEdge(edge_handle) orelse return null;
-            self.current_edge_handle = edge.next_outgoing_edge;
-            return edge.target;
         }
     };
 }
