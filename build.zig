@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // zig lib
-    const root = b.addModule("graph", .{
+    const root = b.addModule("permafrost", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
 
     // static lib
     const lib = b.addLibrary(.{
-        .name = "graph",
+        .name = "permafrost",
         .linkage = .static,
         .root_module = root,
     });
