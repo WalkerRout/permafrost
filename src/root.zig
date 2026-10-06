@@ -24,7 +24,6 @@ pub fn EdgeData(comptime T: type) type {
 
 pub fn Graph(comptime V: type, comptime E: type) type {
     return struct {
-        gpa: Allocator,
         nodes: std.ArrayList(NodeData(V)),
         edges: std.ArrayList(EdgeData(E)),
 
@@ -33,35 +32,33 @@ pub fn Graph(comptime V: type, comptime E: type) type {
             InvalidNode,
         };
 
-        // todo accept gpa as argument?
-        pub fn init(gpa: Allocator) Graph(V, E) {
+        pub fn init() Graph(V, E) {
             return .{
-                .gpa = gpa,
                 .nodes = .empty,
                 .edges = .empty,
             };
         }
 
-        pub fn deinit(self: *Graph(V, E)) void {
-            self.nodes.deinit(self.gpa);
-            self.edges.deinit(self.gpa);
+        pub fn deinit(self: *Graph(V, E), gpa: Allocator) void {
+            self.nodes.deinit(gpa);
+            self.edges.deinit(gpa);
         }
 
-        pub fn addNode(self: *Graph(V, E), payload: V) Error!NodeHandle {
+        pub fn addNode(self: *Graph(V, E), gpa: Allocator, payload: V) Error!NodeHandle {
             const index = self.nodes.items.len;
-            try self.nodes.append(self.gpa, .{
+            try self.nodes.append(gpa, .{
                 .payload = payload,
                 .first_outgoing_edge = null,
             });
             return @enumFromInt(index);
         }
 
-        pub fn addEdge(self: *Graph(V, E), source_node_handle: NodeHandle, target_node_handle: NodeHandle, payload: E) Error!EdgeHandle {
+        pub fn addEdge(self: *Graph(V, E), gpa: Allocator, source_node_handle: NodeHandle, target_node_handle: NodeHandle, payload: E) Error!EdgeHandle {
             const index = self.edges.items.len;
             const source_node = self.getNode(source_node_handle) orelse return Error.InvalidNode;
             const target_node = self.getNode(target_node_handle) orelse return Error.InvalidNode;
             _ = target_node;
-            try self.edges.append(self.gpa, .{
+            try self.edges.append(gpa, .{
                 .payload = payload,
                 .target = target_node_handle,
                 .next_outgoing_edge = source_node.first_outgoing_edge,
@@ -171,18 +168,19 @@ test "colouring books r neat" {
         }
     };
 
-    var graph: Graph(?Colour, void) = .init(std.testing.allocator);
-    defer graph.deinit();
-    const a = try graph.addNode(null);
-    const b = try graph.addNode(null);
-    const c = try graph.addNode(null);
+    const gpa = std.testing.allocator;
+    var graph: Graph(?Colour, void) = .init();
+    defer graph.deinit(gpa);
+    const a = try graph.addNode(gpa, null);
+    const b = try graph.addNode(gpa, null);
+    const c = try graph.addNode(gpa, null);
     // bidirectional triangle
-    _ = try graph.addEdge(a, b, {});
-    _ = try graph.addEdge(a, c, {});
-    _ = try graph.addEdge(b, a, {});
-    _ = try graph.addEdge(b, c, {});
-    _ = try graph.addEdge(c, b, {});
-    _ = try graph.addEdge(c, a, {});
+    _ = try graph.addEdge(gpa, a, b, {});
+    _ = try graph.addEdge(gpa, a, c, {});
+    _ = try graph.addEdge(gpa, b, a, {});
+    _ = try graph.addEdge(gpa, b, c, {});
+    _ = try graph.addEdge(gpa, c, b, {});
+    _ = try graph.addEdge(gpa, c, a, {});
 
     try std.testing.expect(colouring.colour(Colour, &graph));
     // graph is coloured now; all payloads have content
