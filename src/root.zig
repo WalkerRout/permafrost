@@ -50,7 +50,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
                 .payload = payload,
                 .first_outgoing_edge = null,
             });
-            return @enumFromInt(index);
+            return @fromBackingInt(@intCast(index));
         }
 
         pub fn addEdge(self: *Graph(V, E), gpa: Allocator, source_node_handle: NodeHandle, target_node_handle: NodeHandle, payload: E) Error!EdgeHandle {
@@ -63,7 +63,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
                 .target = target_node_handle,
                 .next_outgoing_edge = source_node.first_outgoing_edge,
             });
-            const handle: EdgeHandle = @enumFromInt(index);
+            const handle: EdgeHandle = @fromBackingInt(@intCast(index));
             source_node.first_outgoing_edge = handle;
             return handle;
         }
@@ -96,7 +96,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
 
             pub fn next(self: *NodeIterator) ?NodeHandle {
                 if (self.next_offset >= self.len) return null;
-                const handle: NodeHandle = @enumFromInt(self.next_offset);
+                const handle: NodeHandle = @fromBackingInt(@intCast(self.next_offset));
                 self.next_offset += 1;
                 return handle;
             }
@@ -109,9 +109,28 @@ pub fn Graph(comptime V: type, comptime E: type) type {
             };
         }
 
+        pub const EdgeIterator = struct {
+            next_offset: usize,
+            len: usize,
+
+            pub fn next(self: *EdgeIterator) ?EdgeHandle {
+                if (self.next_offset >= self.len) return null;
+                const handle: EdgeHandle = @fromBackingInt(@intCast(self.next_offset));
+                self.next_offset += 1;
+                return handle;
+            }
+        };
+
+        pub fn allEdges(self: *const Graph(V, E)) EdgeIterator {
+            return .{
+                .next_offset = 0,
+                .len = self.edges.items.len,
+            };
+        }
+
         // opaque accessors, since we might swap offset for a ptr later...
         pub fn getNode(self: *const Graph(V, E), node_handle: NodeHandle) ?*NodeData(V) {
-            const offset = @intFromEnum(node_handle);
+            const offset = @backingInt(node_handle);
             if (offset >= self.nodes.items.len) {
                 return null;
             } else {
@@ -120,7 +139,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
         }
 
         pub fn getEdge(self: *const Graph(V, E), edge_handle: EdgeHandle) ?*EdgeData(E) {
-            const offset = @intFromEnum(edge_handle);
+            const offset = @backingInt(edge_handle);
             if (offset >= self.edges.items.len) {
                 return null;
             } else {
@@ -137,7 +156,7 @@ test "colouring books r neat" {
             return colourFrom(C, graph, graph.allNodes());
         }
 
-        fn colourFrom(comptime C: type, graph: *Graph(?C, void), remaining: anytype) bool {
+        fn colourFrom(comptime C: type, graph: *Graph(?C, void), remaining: Graph(?C, void).NodeIterator) bool {
             // try all colours for the next node in remaining
             var rest = remaining;
             const handle: NodeHandle = rest.next() orelse return true;
