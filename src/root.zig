@@ -83,6 +83,7 @@ pub fn Graph(comptime V: type, comptime E: type) type {
             }
         };
 
+        // maybe handle.successors(graph)? idk i think graph as the authority makes more sense
         pub fn successors(self: *const Graph(V, E), node_handle: NodeHandle) SuccessorsIterator {
             const first_outgoing_edge =
                 if (self.getNode(node_handle)) |node| node.first_outgoing_edge else null;
@@ -132,23 +133,68 @@ pub fn Graph(comptime V: type, comptime E: type) type {
     };
 }
 
-test "main" {
-    const gpa = std.testing.allocator;
-    var graph: Graph(void, void) = .init(gpa);
+test "colouring books r neat" {
+    const Colour = enum { red, blue, green };
+    const colouring = struct {
+        pub fn colour(comptime C: type, graph: *Graph(?C, void)) bool {
+            return colourFrom(C, graph, graph.allNodes());
+        }
+
+        fn colourFrom(comptime C: type, graph: *Graph(?C, void), remaining: anytype) bool {
+            // try all colours for the next node in remaining
+            var rest = remaining;
+            const handle: NodeHandle = rest.next() orelse return true;
+            const node = graph.getNode(handle).?;
+            // for each colour...
+            for (std.enums.values(C)) |c| {
+                // if we find a colour we can use...
+                if (!canUse(C, graph, handle, c)) continue;
+                // claim it!
+                node.payload = c;
+                // then try to colour the rest...
+                // - if we manage to colour the rest successfully given our above claim, we report success
+                if (colourFrom(C, graph, rest)) return true;
+                // didnt manage to colour the rest of the graph, try the next colour...
+            }
+            // we didnt find any working combination this attempt, so we should reset
+            node.payload = null;
+            return false;
+        }
+
+        fn canUse(comptime C: type, graph: *const Graph(?C, void), handle: NodeHandle, c: C) bool {
+            // we can use a colour if no connected nodes share the same colour
+            var iter = graph.successors(handle);
+            while (iter.next()) |n| {
+                if (graph.getNode(n).?.payload == c) return false;
+            }
+            return true;
+        }
+    };
+
+    var graph: Graph(?Colour, void) = .init(std.testing.allocator);
     defer graph.deinit();
-    const a = try graph.addNode({});
-    const b = try graph.addNode({});
-    const c = try graph.addNode({});
-    const d = try graph.addNode({});
-    const e = try graph.addNode({});
-    const f = try graph.addNode({});
+    const a = try graph.addNode(null);
+    const b = try graph.addNode(null);
+    const c = try graph.addNode(null);
+    // bidirectional triangle
     _ = try graph.addEdge(a, b, {});
     _ = try graph.addEdge(a, c, {});
-    _ = try graph.addEdge(a, d, {});
-    _ = try graph.addEdge(a, e, {});
-    _ = try graph.addEdge(a, f, {});
-    var iter = graph.successors(a);
-    while (iter.next()) |child| {
-        std.debug.print("{}\n", .{child});
+    _ = try graph.addEdge(b, a, {});
+    _ = try graph.addEdge(b, c, {});
+    _ = try graph.addEdge(c, b, {});
+    _ = try graph.addEdge(c, a, {});
+
+    try std.testing.expect(colouring.colour(Colour, &graph));
+    // graph is coloured now; all payloads have content
+
+    var nodes = graph.allNodes();
+    while (nodes.next()) |node| {
+        // this node has a colour
+        const node_colour = graph.getNode(node).?.payload.?;
+        var neighbours = graph.successors(node);
+        // that is different from all of its neighbours
+        while (neighbours.next()) |neighbour| {
+            try std.testing.expect(graph.getNode(neighbour).?.payload.? != node_colour);
+        }
     }
 }
